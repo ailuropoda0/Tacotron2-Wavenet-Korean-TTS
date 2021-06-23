@@ -99,6 +99,9 @@ def train(log_dir, config):
     num_speakers = len(data_dirs)
     config.num_test = config.num_test_per_speaker * num_speakers  # 2*1
 
+    if config.lang != 'Korean':
+        hparams.cleaners = 'english_cleaners'
+
     if num_speakers > 1 and hparams.model_type not in ["multi-speaker", "simple"]:
         raise Exception("[!] Unkown model_type for multi-speaker: {}".format(config.model_type))
 
@@ -241,14 +244,9 @@ def main():
 
     parser.add_argument('--log_dir', default='logdir-tacotron2')
     
-    parser.add_argument('--data_paths', default='D:\\hccho\\Tacotron-Wavenet-Vocoder-hccho\\data\\moon,D:\\hccho\\Tacotron-Wavenet-Vocoder-hccho\\data\\son')
-    #parser.add_argument('--data_paths', default='D:\\hccho\\Tacotron-Wavenet-Vocoder-hccho\\data\\small1,D:\\hccho\\Tacotron-Wavenet-Vocoder-hccho\\data\\small2')
+    parser.add_argument('--data_paths', default=None)    
     
-    
-    #parser.add_argument('--load_path', default=None)   # 아래의 'initialize_path'보다 우선 적용
-    parser.add_argument('--load_path', default='logdir-tacotron2/moon+son_2019-03-01_10-35-44')
-    
-    
+    parser.add_argument('--load_path', default=None)   # 아래의 'initialize_path'보다 우선 적용
     parser.add_argument('--initialize_path', default=None)   # ckpt로 부터 model을 restore하지만, global step은 0에서 시작
 
     parser.add_argument('--batch_size', type=int, default=32)
@@ -260,13 +258,20 @@ def main():
     
     parser.add_argument('--checkpoint_interval', type=int, default=2000) # 2000
     parser.add_argument('--skip_path_filter', type=str2bool, default=False, help='Use only for debugging')
+    parser.add_argument('--lang', default='Korean')
 
     parser.add_argument('--slack_url', help='Slack webhook URL to get periodic reports.')
     parser.add_argument('--git', action='store_true', help='If set, verify that the client is clean.')  # The store_true option automatically creates a default value of False.
 
     config = parser.parse_args()
+    if not config.data_paths:
+        raise Exception("data paths are not set")
     config.data_paths = config.data_paths.split(",")
     setattr(hparams, "num_speakers", len(config.data_paths))
+    if hparams.num_speakers == 1:
+        setattr(hparams, "model_type", "single")
+    else:
+        setattr(hparams, "model_type", "multi-speaker")
 
     prepare_dirs(config, hparams)
 
