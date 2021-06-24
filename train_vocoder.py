@@ -18,7 +18,7 @@ from tensorflow.python.client import timeline
 from datetime import datetime
 from wavenet import WaveNetModel,mu_law_decode
 from datasets import DataFeederWavenet
-from hparams import hparams
+from hparams import default_hparams
 from utils import validate_directories,load,save,infolog,get_tensors_in_checkpoint_file,build_tensors_in_checkpoint_file,plot,audio
 
 tf.logging.set_verbosity(tf.logging.ERROR)
@@ -38,7 +38,7 @@ def eval_step(sess,logdir,step,waveform,upsampled_local_condition_data,speaker_i
         prediction = sess.run(next_sample, feed_dict={samples: window,upsampled_local_condition: upsampled_local_condition_data[:,step2,:],speaker_id: speaker_id_data })
 
 
-        if hparams.scalar_input:
+        if default_hparams.scalar_input:
             sample = prediction  # logistic distribution으로부터 sampling 되었기 때문에, randomness가 있다.
         else:
             # Scale prediction distribution using temperature.
@@ -56,7 +56,7 @@ def eval_step(sess,logdir,step,waveform,upsampled_local_condition_data,speaker_i
                 np.testing.assert_allclose( prediction, scaled_prediction, atol=1e-5, err_msg='Prediction scaling at temperature=1.0 is not working as intended.')
             
             # argmax로 선택하지 않기 때문에, 같은 입력이 들어가도 달라질 수 있다.
-            sample = [[np.random.choice(np.arange(hparams.quantization_channels), p=p)] for p in scaled_prediction]  # choose one sample per batch
+            sample = [[np.random.choice(np.arange(default_hparams.quantization_channels), p=p)] for p in scaled_prediction]  # choose one sample per batch
         
         waveform = np.concatenate([waveform,sample],axis=-1)   #window.shape: (N,1)
 
@@ -70,13 +70,13 @@ def eval_step(sess,logdir,step,waveform,upsampled_local_condition_data,speaker_i
     
     print('\n')
     # Save the result as a wav file.    
-    if hparams.input_type == 'raw':
+    if default_hparams.input_type == 'raw':
         out = waveform[:,1:]
-    elif hparams.input_type == 'mulaw':
-        decode = mu_law_decode(samples, hparams.quantization_channels,quantization=False)
+    elif default_hparams.input_type == 'mulaw':
+        decode = mu_law_decode(samples, default_hparams.quantization_channels,quantization=False)
         out = sess.run(decode, feed_dict={samples: waveform[:,1:]})
     else:  # 'mulaw-quantize'
-        decode = mu_law_decode(samples, hparams.quantization_channels,quantization=True)
+        decode = mu_law_decode(samples, default_hparams.quantization_channels,quantization=True)
         out = sess.run(decode, feed_dict={samples: waveform[:,1:]})          
         
         
@@ -86,8 +86,8 @@ def eval_step(sess,logdir,step,waveform,upsampled_local_condition_data,speaker_i
         wav_out_path= logdir + '/test-{}-{}.wav'.format(step,i)
         mel_path =  wav_out_path.replace(".wav", ".png")
         
-        gen_mel_spectrogram = audio.melspectrogram(out[i], hparams).astype(np.float32).T
-        audio.save_wav(out[i], wav_out_path, hparams.sample_rate)  # save_wav 내에서 out[i]의 값이 바뀐다.
+        gen_mel_spectrogram = audio.melspectrogram(out[i], default_hparams).astype(np.float32).T
+        audio.save_wav(out[i], wav_out_path, default_hparams.sample_rate)  # save_wav 내에서 out[i]의 값이 바뀐다.
         
         plot.plot_spectrogram(gen_mel_spectrogram, mel_path, title='generated mel spectrogram{}'.format(step),target_spectrogram=mel_input_data[i])  
 
@@ -150,7 +150,7 @@ def main():
     config.data_dir = config.data_dir.split(",")
     
     try:
-        directories = validate_directories(config,hparams)
+        directories = validate_directories(config,default_hparams)
     except ValueError as e:
         print("Some arguments are wrong:")
         print(str(e))
@@ -170,8 +170,8 @@ def main():
 
     global_step = tf.Variable(0, name='global_step', trainable=False)
 
-    if hparams.l2_regularization_strength == 0:
-        hparams.l2_regularization_strength = None
+    if default_hparams.l2_regularization_strength == 0:
+        default_hparams.l2_regularization_strength = None
 
 
     # Create coordinator.
@@ -181,11 +181,11 @@ def main():
     with tf.name_scope('create_inputs'):
         # Allow silence trimming to be skipped by specifying a threshold near
         # zero.
-        silence_threshold = hparams.silence_threshold if hparams.silence_threshold > EPSILON else None
+        silence_threshold = default_hparams.silence_threshold if default_hparams.silence_threshold > EPSILON else None
         gc_enable = True  # Before: num_speakers > 1    After: 항상 True
         
         # AudioReader에서 wav 파일을 잘라 input값을 만든다. receptive_field길이만큼을 앞부분에 pad하거나 앞조각에서 가져온다. (receptive_field+ sample_size)크기로 자른다.
-        reader = DataFeederWavenet(coord,config.data_dir,batch_size=hparams.wavenet_batch_size,gc_enable= gc_enable,test_mode=False)
+        reader = DataFeederWavenet(coord,config.data_dir,batch_size=default_hparams.wavenet_batch_size,gc_enable= gc_enable,test_mode=False)
         
         # test를 위한 DataFeederWavenet를 하나 만들자. 여기서는 딱 1개의 파일만 가져온다.
         reader_test = DataFeederWavenet(coord,config.data_dir,batch_size=1,gc_enable= gc_enable,test_mode=True,queue_size=1)
@@ -196,9 +196,9 @@ def main():
 
 
     # Create train network.
-    net = create_network(hparams,hparams.wavenet_batch_size,num_speakers,is_training=True)
-    net.add_loss(input_batch=audio_batch,local_condition=lc_batch, global_condition_batch=gc_id_batch, l2_regularization_strength=hparams.l2_regularization_strength,upsample_type=hparams.upsample_type)
-    net.add_optimizer(hparams,global_step)
+    net = create_network(default_hparams,default_hparams.wavenet_batch_size,num_speakers,is_training=True)
+    net.add_loss(input_batch=audio_batch,local_condition=lc_batch, global_condition_batch=gc_id_batch, l2_regularization_strength=default_hparams.l2_regularization_strength,upsample_type=default_hparams.upsample_type)
+    net.add_optimizer(default_hparams,global_step)
 
 
 
@@ -210,7 +210,7 @@ def main():
     sess.run(init)
     
     # Saver for storing checkpoints of the model.
-    saver = tf.train.Saver(var_list=tf.global_variables(), max_to_keep=hparams.max_checkpoints)  # 최대 checkpoint 저장 갯수 지정
+    saver = tf.train.Saver(var_list=tf.global_variables(), max_to_keep=default_hparams.max_checkpoints)  # 최대 checkpoint 저장 갯수 지정
     
     try:
         start_step = load(saver, sess, restore_from)  # checkpoint load
@@ -231,16 +231,16 @@ def main():
     reader_test.start_in_session(sess,start_step)
     
     ################### Create test network.  <---- Queue 생성 때문에, sess restore후 test network 생성
-    net_test = create_network(hparams,1,num_speakers,is_training=False)
+    net_test = create_network(default_hparams,1,num_speakers,is_training=False)
   
-    if hparams.scalar_input:
+    if default_hparams.scalar_input:
         samples = tf.placeholder(tf.float32,shape=[net_test.batch_size,None])
         waveform = 2*np.random.rand(net_test.batch_size).reshape(net_test.batch_size,-1)-1
         
     else:
         samples = tf.placeholder(tf.int32,shape=[net_test.batch_size,None])  # samples: mu_law_encode로 변환된 것. one-hot으로 변환되기 전. (batch_size, 길이)
-        waveform = np.random.randint(hparams.quantization_channels,size=net_test.batch_size).reshape(net_test.batch_size,-1)
-    upsampled_local_condition = tf.placeholder(tf.float32,shape=[net_test.batch_size,hparams.num_mels])  
+        waveform = np.random.randint(default_hparams.quantization_channels,size=net_test.batch_size).reshape(net_test.batch_size,-1)
+    upsampled_local_condition = tf.placeholder(tf.float32,shape=[net_test.batch_size,default_hparams.num_mels])  
     
         
 
@@ -260,7 +260,7 @@ def main():
 
 
     with tf.variable_scope('wavenet',reuse=tf.AUTO_REUSE):
-        upsampled_local_condition_data = net_test.create_upsample(mel_input_test,upsample_type=hparams.upsample_type)
+        upsampled_local_condition_data = net_test.create_upsample(mel_input_test,upsample_type=default_hparams.upsample_type)
         upsampled_local_condition_data_ = sess.run(upsampled_local_condition_data)  # upsampled_local_condition_data_ 을 feed_dict로 placehoder인 upsampled_local_condition에 넣어준다.
 
     ######################################################
@@ -273,7 +273,7 @@ def main():
         while not coord.should_stop():
             
             start_time = time.time()
-            if hparams.store_metadata and step % 50 == 0:
+            if default_hparams.store_metadata and step % 50 == 0:
                 # Slow run that stores extra information for debugging.
                 log('Storing metadata')
                 run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
@@ -298,7 +298,7 @@ def main():
             if step % config.eval_every == 0:  # config.eval_every
                 eval_step(sess,logdir,step,waveform,upsampled_local_condition_data_,speaker_id_test,mel_input_test,samples,speaker_id,upsampled_local_condition,next_sample)
             
-            if step >= hparams.num_steps:
+            if step >= default_hparams.num_steps:
                 # error message가 나오지만, 여기서 멈춘 것은 맞다.
                 raise Exception('End xxx~~~yyy')
             

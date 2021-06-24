@@ -11,7 +11,7 @@ import tensorflow as tf
 from datetime import datetime
 from functools import partial
 
-from hparams import hparams, hparams_debug_string
+from hparams import default_hparams, hparams_debug_string
 from tacotron2 import create_model, get_most_recent_checkpoint
 
 from utils import ValueWindow, prepare_dirs
@@ -72,11 +72,11 @@ def save_and_plot_fn(args, log_dir, step, loss, prefix):
     audio_path = os.path.join(log_dir, '{}-step-{:09d}-audio{:03d}.wav'.format(prefix, step, idx))
     align_path = os.path.join(log_dir, '{}-step-{:09d}-align{:03d}.png'.format(prefix, step, idx))
 
-    waveform = inv_spectrogram(spec.T,hparams)
-    save_wav(waveform, audio_path,hparams.sample_rate)
+    waveform = inv_spectrogram(spec.T,default_hparams)
+    save_wav(waveform, audio_path,default_hparams.sample_rate)
 
     info_text = 'step={:d}, loss={:.5f}'.format(step, loss)
-    if 'korean_cleaners' in [x.strip() for x in hparams.cleaners.split(',')]:
+    if 'korean_cleaners' in [x.strip() for x in default_hparams.cleaners.split(',')]:
         log('Training korean : Use jamo')
         plot.plot_alignment( align, align_path, info=info_text, text=sequence_to_text(seq,skip_eos_and_pad=True, combine_jamo=True), isKorean=True)
     else:
@@ -100,9 +100,9 @@ def train(log_dir, config):
     config.num_test = config.num_test_per_speaker * num_speakers  # 2*1
 
     if config.lang != 'Korean':
-        hparams.cleaners = 'english_cleaners'
+        default_hparams.cleaners = 'english_cleaners'
 
-    if num_speakers > 1 and hparams.model_type not in ["multi-speaker", "simple"]:
+    if num_speakers > 1 and default_hparams.model_type not in ["multi-speaker", "simple"]:
         raise Exception("[!] Unkown model_type for multi-speaker: {}".format(config.model_type))
 
     commit = get_git_commit() if config.git else 'None'
@@ -121,15 +121,15 @@ def train(log_dir, config):
     coord = tf.train.Coordinator()
     with tf.variable_scope('datafeeder') as scope:
         # DataFeeder의 6개 placeholder: train_feeder.inputs, train_feeder.input_lengths, train_feeder.loss_coeff, train_feeder.mel_targets, train_feeder.linear_targets, train_feeder.speaker_id
-        train_feeder = DataFeederTacotron2(coord, data_dirs, hparams, config, 32,data_type='train', batch_size=config.batch_size)
-        test_feeder = DataFeederTacotron2(coord, data_dirs, hparams, config, 8, data_type='test', batch_size=config.num_test)
+        train_feeder = DataFeederTacotron2(coord, data_dirs, default_hparams, config, 32,data_type='train', batch_size=config.batch_size)
+        test_feeder = DataFeederTacotron2(coord, data_dirs, default_hparams, config, 8, data_type='test', batch_size=config.num_test)
 
     # Set up model:
 
     global_step = tf.Variable(0, name='global_step', trainable=False)
 
     with tf.variable_scope('model') as scope:
-        model = create_model(hparams)
+        model = create_model(default_hparams)
         model.initialize(inputs=train_feeder.inputs, input_lengths=train_feeder.input_lengths,num_speakers=num_speakers,speaker_id=train_feeder.speaker_id,
                          mel_targets=train_feeder.mel_targets, linear_targets=train_feeder.linear_targets,is_training=True,
                          loss_coeff=train_feeder.loss_coeff,stop_token_targets=train_feeder.stop_token_targets)
@@ -139,7 +139,7 @@ def train(log_dir, config):
         train_stats = add_stats(model, scope_name='train') # legacy
 
     with tf.variable_scope('model', reuse=True) as scope:
-        test_model = create_model(hparams)
+        test_model = create_model(default_hparams)
         test_model.initialize(inputs=test_feeder.inputs, input_lengths=test_feeder.input_lengths,num_speakers=num_speakers,speaker_id=test_feeder.speaker_id,
                          mel_targets=test_feeder.mel_targets, linear_targets=test_feeder.linear_targets,is_training=False,
                          loss_coeff=test_feeder.loss_coeff,stop_token_targets=test_feeder.stop_token_targets)
@@ -267,13 +267,13 @@ def main():
     if not config.data_paths:
         raise Exception("data paths are not set")
     config.data_paths = config.data_paths.split(",")
-    setattr(hparams, "num_speakers", len(config.data_paths))
-    if hparams.num_speakers == 1:
-        setattr(hparams, "model_type", "single")
+    setattr(default_hparams, "num_speakers", len(config.data_paths))
+    if default_hparams.num_speakers == 1:
+        default_hparams.add_hparam("model_type", "single")
     else:
-        setattr(hparams, "model_type", "multi-speaker")
+        default_hparams.add_hparam("model_type", "multi-speaker")
 
-    prepare_dirs(config, hparams)
+    prepare_dirs(config, default_hparams)
 
     log_path = os.path.join(config.model_dir, 'train.log')
     infolog.init(log_path, config.model_dir, config.slack_url)

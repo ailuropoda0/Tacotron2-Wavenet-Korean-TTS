@@ -24,7 +24,7 @@ import numpy as np
 import tensorflow as tf
 
 from wavenet import WaveNetModel, mu_law_decode, mu_law_encode
-from hparams import hparams
+from hparams import default_hparams
 from utils import load_hparams,load
 from utils import audio
 from utils import plot
@@ -73,7 +73,7 @@ def get_arguments():
     parser.add_argument('--gc_id',type=int,default=None,help='ID of category to generate, if globally conditioned.')
     
     arguments = parser.parse_args()
-    if hparams.gc_channels is not None:
+    if default_hparams.gc_channels is not None:
         if arguments.gc_cardinality is None:
             raise ValueError("Globally conditioning but gc_cardinality not specified. Use --gc_cardinality=377 for full VCTK corpus.")
 
@@ -92,7 +92,7 @@ def get_arguments():
 def create_seed(filename,sample_rate,quantization_channels,window_size,scalar_input):
     # seed의 앞부분만 사용한다.
     seed_audio, _ = librosa.load(filename, sr=sample_rate, mono=True)
-    seed_audio = audio.trim_silence(seed_audio, hparams)
+    seed_audio = audio.trim_silence(seed_audio, default_hparams)
     if scalar_input:
         if len(seed_audio) < window_size:
             return seed_audio
@@ -115,30 +115,30 @@ def main():
     if not os.path.exists(logdir):
         os.makedirs(logdir)
 
-    load_hparams(hparams, config.checkpoint_dir)
+    load_hparams(default_hparams, config.checkpoint_dir)
 
 
     with tf.device('/cpu:0'):  # cpu가 더 빠르다. gpu로 설정하면 Error. tf.device 없이 하면 더 느려진다.
 
         sess = tf.Session()
-        scalar_input = hparams.scalar_input
+        scalar_input = default_hparams.scalar_input
         net = WaveNetModel(
             batch_size=config.batch_size,
-            dilations=hparams.dilations,
-            filter_width=hparams.filter_width,
-            residual_channels=hparams.residual_channels,
-            dilation_channels=hparams.dilation_channels,
-            quantization_channels=hparams.quantization_channels,
-            out_channels =hparams.out_channels,
-            skip_channels=hparams.skip_channels,
-            use_biases=hparams.use_biases,
-            scalar_input=hparams.scalar_input,
-            global_condition_channels=hparams.gc_channels,
+            dilations=default_hparams.dilations,
+            filter_width=default_hparams.filter_width,
+            residual_channels=default_hparams.residual_channels,
+            dilation_channels=default_hparams.dilation_channels,
+            quantization_channels=default_hparams.quantization_channels,
+            out_channels =default_hparams.out_channels,
+            skip_channels=default_hparams.skip_channels,
+            use_biases=default_hparams.use_biases,
+            scalar_input=default_hparams.scalar_input,
+            global_condition_channels=default_hparams.gc_channels,
             global_condition_cardinality=config.gc_cardinality,
-            local_condition_channels=hparams.num_mels,
-            upsample_factor=hparams.upsample_factor,
-            legacy = hparams.legacy,
-            residual_legacy = hparams.residual_legacy,
+            local_condition_channels=default_hparams.num_mels,
+            upsample_factor=default_hparams.upsample_factor,
+            legacy = default_hparams.legacy,
+            residual_legacy = default_hparams.residual_legacy,
             train_mode=False)   # train 단계에서는 global_condition_cardinality를 AudioReader에서 파악했지만, 여기서는 넣어주어야 함
             
         if scalar_input:
@@ -147,17 +147,17 @@ def main():
             samples = tf.placeholder(tf.int32,shape=[net.batch_size,None])  # samples: mu_law_encode로 변환된 것. one-hot으로 변환되기 전. (batch_size, 길이)
     
         # local condition이 (N,T,num_mels) 여야 하지만, 길이 1까지로 들어가야하기 때무넹, (N,1,num_mels) --> squeeze하면 (N,num_mels)
-        upsampled_local_condition = tf.placeholder(tf.float32,shape=[net.batch_size,hparams.num_mels])  
+        upsampled_local_condition = tf.placeholder(tf.float32,shape=[net.batch_size,default_hparams.num_mels])  
         
         next_sample = net.predict_proba_incremental(samples,upsampled_local_condition, [config.gc_id]*net.batch_size)  # Fast Wavenet Generation Algorithm-1611.09482 algorithm 적용
         
         # making local condition data. placeholder - upsampled_local_condition 넣어줄 upsampled local condition data를 만들어 보자.
         
         mel_input = np.load(config.mel)
-        sample_size = mel_input.shape[0] * hparams.hop_size
+        sample_size = mel_input.shape[0] * default_hparams.hop_size
         mel_input = np.tile(mel_input,(config.batch_size,1,1))
         with tf.variable_scope('wavenet',reuse=tf.AUTO_REUSE):
-            upsampled_local_condition_data = net.create_upsample(mel_input,upsample_type=hparams.upsample_type)
+            upsampled_local_condition_data = net.create_upsample(mel_input,upsample_type=default_hparams.upsample_type)
             
         var_list = [var for var in tf.global_variables() if 'queue' not in var.name ]
         saver = tf.train.Saver(var_list)
@@ -169,10 +169,10 @@ def main():
     
      
     
-        quantization_channels = hparams.quantization_channels
+        quantization_channels = default_hparams.quantization_channels
         if config.wav_seed:
             # wav_seed의 길이가 receptive_field보다 작으면, padding이라도 해야 되는 거 아닌가? 그냥 짧으면 짧은 대로 return함  --> 그래서 너무 짧으면 error
-            seed = create_seed(config.wav_seed,hparams.sample_rate,quantization_channels,net.receptive_field,scalar_input)  # --> mu_law encode 된 것.
+            seed = create_seed(config.wav_seed,default_hparams.sample_rate,quantization_channels,net.receptive_field,scalar_input)  # --> mu_law encode 된 것.
             if scalar_input:
                 waveform = seed.tolist()
             else:
@@ -182,7 +182,7 @@ def main():
             for i, x in enumerate(waveform[-net.receptive_field: -1]):  # 제일 마지막 1개는 아래의 for loop의 첫 loop에서 넣어준다.
                 if i % 100 == 0:
                     print('Priming sample {}/{}'.format(i,net.receptive_field), end='\r')
-                sess.run(next_sample, feed_dict={samples: np.array([x]*net.batch_size).reshape(net.batch_size,1), upsampled_local_condition: np.zeros([net.batch_size,hparams.num_mels])})
+                sess.run(next_sample, feed_dict={samples: np.array([x]*net.batch_size).reshape(net.batch_size,1), upsampled_local_condition: np.zeros([net.batch_size,default_hparams.num_mels])})
             print('Done.')
             waveform = np.array([waveform[-net.receptive_field:]]*net.batch_size)            
         else:
@@ -252,9 +252,9 @@ def main():
     
         
         # Save the result as a wav file.    
-        if hparams.input_type == 'raw':
+        if default_hparams.input_type == 'raw':
             out = waveform[:,net.receptive_field:]
-        elif hparams.input_type == 'mulaw':
+        elif default_hparams.input_type == 'mulaw':
             decode = mu_law_decode(samples, quantization_channels,quantization=False)
             out = sess.run(decode, feed_dict={samples: waveform[:,net.receptive_field:]})
         else:  # 'mulaw-quantize'
@@ -268,8 +268,8 @@ def main():
             config.wav_out_path= logdir + '/test-{}.wav'.format(i)
             mel_path =  config.wav_out_path.replace(".wav", ".png")
             
-            gen_mel_spectrogram = audio.melspectrogram(out[i], hparams).astype(np.float32).T
-            audio.save_wav(out[i], config.wav_out_path, hparams.sample_rate)  # save_wav 내에서 out[i]의 값이 바뀐다.
+            gen_mel_spectrogram = audio.melspectrogram(out[i], default_hparams).astype(np.float32).T
+            audio.save_wav(out[i], config.wav_out_path, default_hparams.sample_rate)  # save_wav 내에서 out[i]의 값이 바뀐다.
             
             plot.plot_spectrogram(gen_mel_spectrogram, mel_path, title='generated mel spectrogram',target_spectrogram=mel_input[i])        
         print('Finished generating.')

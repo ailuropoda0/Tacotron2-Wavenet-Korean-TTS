@@ -24,7 +24,7 @@ from tqdm import tqdm
 import tensorflow as tf
 from functools import partial
 
-from hparams import hparams
+from hparams import default_hparams
 from tacotron2 import create_model, get_most_recent_checkpoint
 from utils.audio import save_wav, inv_linear_spectrogram, inv_preemphasis, inv_spectrogram_tensorflow
 from utils import plot, PARAMS_NAME, load_json, load_hparams, add_prefix, add_postfix, get_time, parallel_run, makedirs, str2bool
@@ -42,6 +42,7 @@ class Synthesizer(object):
         self.sess.close()
 
     def load(self, checkpoint_path, num_speakers=2, checkpoint_step=None, inference_prenet_dropout=True,model_name='tacotron'):
+        print("-------synthesizer.load---------")
         self.num_speakers = num_speakers
 
         if os.path.isdir(checkpoint_path):
@@ -59,13 +60,15 @@ class Synthesizer(object):
         speaker_id = tf.placeholder_with_default(
                 tf.zeros([batch_size], dtype=tf.int32), [None], 'speaker_id')
 
-        load_hparams(hparams, load_path)
-        hparams.inference_prenet_dropout = inference_prenet_dropout
+        load_hparams(default_hparams, load_path)
+        print(default_hparams.to_json())
+        print("---")
+        default_hparams.inference_prenet_dropout = inference_prenet_dropout
         with tf.variable_scope('model') as scope:
-            self.model = create_model(hparams)
+            self.model = create_model(default_hparams)
 
             self.model.initialize(inputs=inputs, input_lengths=input_lengths, num_speakers=self.num_speakers, speaker_id=speaker_id,is_training=False)
-            self.wav_output = inv_spectrogram_tensorflow(self.model.linear_outputs,hparams)
+            self.wav_output = inv_spectrogram_tensorflow(self.model.linear_outputs,default_hparams)
 
         print('Loading checkpoint: %s' % checkpoint_path)
 
@@ -208,16 +211,16 @@ def plot_graph_and_save_audio(args,
             else:
                 break
 
-        spec_end_idx = hparams.reduction_factor * jdx + 3
+        spec_end_idx = default_hparams.reduction_factor * jdx + 3
         wav = wav[:spec_end_idx]
         mel = mel[:spec_end_idx]
 
-    audio_out = inv_linear_spectrogram(wav.T,hparams)
+    audio_out = inv_linear_spectrogram(wav.T,default_hparams)
 
     if librosa_trim and end_of_sentence:
         yt, index = librosa.effects.trim(audio_out, frame_length=5120, hop_length=256, top_db=50)
         audio_out = audio_out[:index[-1]]
-        mel = mel[:index[-1]//hparams.hop_size]
+        mel = mel[:index[-1]//default_hparams.hop_size]
 
     if save_alignment:
         alignment_path = "{}/{}.npy".format(base_path, idx)
@@ -230,7 +233,7 @@ def plot_graph_and_save_audio(args,
         elif base_path:
             current_path = plot_path.replace(".png", ".wav")
 
-        save_wav(audio_out, current_path,hparams.sample_rate)
+        save_wav(audio_out, current_path,default_hparams.sample_rate)
          
         #hccho    
         mel_path = current_path.replace(".wav",".npy")
@@ -239,7 +242,7 @@ def plot_graph_and_save_audio(args,
         return True
     else:
         io_out = io.BytesIO()
-        save_wav(audio_out, io_out,hparams.sample_rate)
+        save_wav(audio_out, io_out,default_hparams.sample_rate)
         result = io_out.getvalue()
         return result
 
@@ -272,7 +275,7 @@ def short_concat(
             if attend_idx == start_idx and attention_argmax[idx - 1] < start_idx:
                 break
 
-        wav_start_idx = hparams.reduction_factor * idx - 1 - pre_surplus_idx
+        wav_start_idx = default_hparams.reduction_factor * idx - 1 - pre_surplus_idx
     else:
         wav_start_idx = 0
 
@@ -284,7 +287,7 @@ def short_concat(
             if attend_idx == end_idx and attention_argmax[idx + 1] > end_idx:
                 break
 
-        wav_end_idx = hparams.reduction_factor * idx + 1 + post_surplus_idx
+        wav_end_idx = default_hparams.reduction_factor * idx + 1 + post_surplus_idx
     else:
         if True: # attention based split
             if end_of_sentence:
@@ -312,7 +315,7 @@ def short_concat(
                 else:
                     break
 
-            wav_end_idx = hparams.reduction_factor * idx + 1 + post_surplus_idx
+            wav_end_idx = default_hparams.reduction_factor * idx + 1 + post_surplus_idx
         else:
             wav_end_idx = None
 

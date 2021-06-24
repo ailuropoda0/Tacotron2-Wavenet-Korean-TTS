@@ -8,7 +8,7 @@ import random
 import numpy as np
 import os
 from utils import audio
-from hparams import hparams
+from hparams import default_hparams
 from glob import glob
 from collections import defaultdict
 
@@ -17,7 +17,7 @@ def get_path_dict(data_dirs, min_length):
     path_dict = {}
     for data_dir in data_dirs:
         
-        if not hparams.skip_path_filter:
+        if not default_hparams.skip_path_filter:
         
             with open(os.path.join(data_dir,'train.txt'), 'r', encoding='utf-8') as f:
                 lines = f.readlines()
@@ -53,12 +53,12 @@ class DataFeederWavenet(threading.Thread):
         self.data_dirs = data_dirs
         self.coord = coord
         self.batch_size = batch_size
-        self.hop_size = audio.get_hop_size(hparams)
-        self.sample_size = ensure_divisible(hparams.sample_size,self.hop_size, True)
+        self.hop_size = audio.get_hop_size(default_hparams)
+        self.sample_size = ensure_divisible(default_hparams.sample_size,self.hop_size, True)
         self.max_frames = self.sample_size // self.hop_size  # sample_size 크기를 확보하기 위해.
         self.queue_size = queue_size
         self.gc_enable = gc_enable
-        self.skip_path_filter = hparams.skip_path_filter
+        self.skip_path_filter = default_hparams.skip_path_filter
         self.test_mode = test_mode
         if test_mode:
             assert batch_size==1
@@ -71,7 +71,7 @@ class DataFeederWavenet(threading.Thread):
         
         self._placeholders = [
             tf.placeholder(tf.float32, shape=[None,None,1],name='input_wav'),
-            tf.placeholder(tf.float32, shape=[None,None,hparams.num_mels],name='local_condition')
+            tf.placeholder(tf.float32, shape=[None,None,default_hparams.num_mels],name='local_condition')
         ]    
         dtypes = [tf.float32, tf.float32]
     

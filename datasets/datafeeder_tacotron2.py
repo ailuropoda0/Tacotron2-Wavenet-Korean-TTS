@@ -334,7 +334,7 @@ def _round_up(x, multiple):
 
 if __name__ == '__main__':
     
-    from hparams import hparams
+    from hparams import default_hparams
     import argparse
     from utils import str2bool
     
@@ -347,7 +347,7 @@ if __name__ == '__main__':
     
     coord = tf.train.Coordinator()
     data_dirs=['D:\\hccho\\Tacotron-Wavenet-Vocoder-hccho\\data\\moon']
-    mydatafeed =  DataFeederTacotron2(coord, data_dirs, hparams, config, 32,data_type='train', batch_size=config.batch_size)
+    mydatafeed =  DataFeederTacotron2(coord, data_dirs, default_hparams, config, 32,data_type='train', batch_size=config.batch_size)
 
     
     

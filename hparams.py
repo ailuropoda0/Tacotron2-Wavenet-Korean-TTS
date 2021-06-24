@@ -3,7 +3,7 @@
 import tensorflow as tf
 import numpy as np
 
-hparams = tf.contrib.training.HParams(
+default_hparams = tf.contrib.training.HParams(
     name = "Tacotron-2",
     
     # tacotron hyper parameter
@@ -131,7 +131,7 @@ hparams = tf.contrib.training.HParams(
     
 
     # Model
-    #model_type = 'multi-speaker', # [single, multi-speaker]
+    model_type = 'multi-speaker', # [single, multi-speaker]
     speaker_embedding_size  = 16, 
 
     embedding_size = 512,    # 'ᄀ', 'ᄂ', 'ᅡ' 에 대한 embedding dim
@@ -210,27 +210,27 @@ hparams = tf.contrib.training.HParams(
  
 )
 
-if hparams.use_lws:
+if default_hparams.use_lws:
     # Does not work if fft_size is not multiple of hop_size!!
     # sample size = 20480, hop_size=256=12.5ms. fft_size는 window_size를 결정하는데, 2048을 시간으로 환산하면 2048/20480 = 0.1초=100ms
-    hparams.sample_rate = 20480  # 
+    default_hparams.sample_rate = 20480  # 
     
     # shift can be specified by either hop_size(우선) or frame_shift_ms
-    hparams.hop_size = 256             # frame_shift_ms = 12.5ms
-    hparams.frame_shift_ms=None      # hop_size=  sample_rate *  frame_shift_ms / 1000
-    hparams.fft_size=2048   # 주로 1024로 되어있는데, tacotron에서 2048사용==> output size = 1025
-    hparams.win_size = None # 256x4 --> 50ms
+    default_hparams.hop_size = 256             # frame_shift_ms = 12.5ms
+    default_hparams.frame_shift_ms=None      # hop_size=  sample_rate *  frame_shift_ms / 1000
+    default_hparams.fft_size=2048   # 주로 1024로 되어있는데, tacotron에서 2048사용==> output size = 1025
+    default_hparams.win_size = None # 256x4 --> 50ms
     
   
     
 else:
     # 미리 정의되 parameter들로 부터 consistant하게 정의해 준다.
-    hparams.num_freq = int(hparams.fft_size/2 + 1)
-    hparams.frame_shift_ms = hparams.hop_size * 1000.0/ hparams.sample_rate      # hop_size=  sample_rate *  frame_shift_ms / 1000
-    hparams.frame_length_ms = hparams.win_size * 1000.0/ hparams.sample_rate 
+    default_hparams.num_freq = int(default_hparams.fft_size/2 + 1)
+    default_hparams.frame_shift_ms = default_hparams.hop_size * 1000.0/ default_hparams.sample_rate      # hop_size=  sample_rate *  frame_shift_ms / 1000
+    default_hparams.frame_length_ms = default_hparams.win_size * 1000.0/ default_hparams.sample_rate 
 
 
 def hparams_debug_string():
-    values = hparams.values()
+    values = default_hparams.values()
     hp = ['  %s: %s' % (name, values[name]) for name in sorted(values)]
     return 'Hyperparameters:\n' + '\n'.join(hp)
