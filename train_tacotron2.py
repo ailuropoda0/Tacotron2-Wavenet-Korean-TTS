@@ -269,9 +269,9 @@ def main():
     config.data_paths = config.data_paths.split(",")
     setattr(default_hparams, "num_speakers", len(config.data_paths))
     if default_hparams.num_speakers == 1:
-        default_hparams.add_hparam("model_type", "single")
+        default_hparams.set_hparam("model_type", "single")
     else:
-        default_hparams.add_hparam("model_type", "multi-speaker")
+        default_hparams.set_hparam("model_type", "multi-speaker")
 
     prepare_dirs(config, default_hparams)
 
