@@ -42,7 +42,6 @@ class Synthesizer(object):
         self.sess.close()
 
     def load(self, checkpoint_path, num_speakers=2, checkpoint_step=None, inference_prenet_dropout=True,model_name='tacotron'):
-        print("-------synthesizer.load---------")
         self.num_speakers = num_speakers
 
         if os.path.isdir(checkpoint_path):
@@ -61,8 +60,6 @@ class Synthesizer(object):
                 tf.zeros([batch_size], dtype=tf.int32), [None], 'speaker_id')
 
         load_hparams(default_hparams, load_path)
-        print(default_hparams.to_json())
-        print("---")
         default_hparams.inference_prenet_dropout = inference_prenet_dropout
         with tf.variable_scope('model') as scope:
             self.model = create_model(default_hparams)
